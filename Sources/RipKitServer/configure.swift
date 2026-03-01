@@ -1,10 +1,16 @@
+import Foundation
 import Vapor
 
 // configures your application
 public func configure(_ app: Application) async throws {
-    // uncomment to serve files from /Public folder
-    // app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
+    let downloadDirectory = app.directory.workingDirectory + "Storage/Downloads"
+    try FileManager.default.createDirectory(
+        atPath: downloadDirectory,
+        withIntermediateDirectories: true,
+        attributes: nil
+    )
 
-    // register routes
+    app.mediaDownloadDirectory = downloadDirectory
+    app.mediaDownloadService = .live
     try routes(app)
 }
