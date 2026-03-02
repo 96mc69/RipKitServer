@@ -44,17 +44,10 @@ extension MediaDownloadService {
             let stderrPipe = Pipe()
 
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = [
-                "yt-dlp",
-                "--no-playlist",
-                "--no-progress",
-                "--restrict-filenames",
-                "--print",
-                "after_move:filepath",
-                "--output",
-                outputTemplate,
-                sourceURL,
-            ]
+            process.arguments = ytDLPArguments(
+                sourceURL: sourceURL,
+                outputTemplate: outputTemplate
+            )
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
             process.terminationHandler = { process in
@@ -107,6 +100,26 @@ extension MediaDownloadService {
             }
         }
     }
+}
+
+func ytDLPArguments(sourceURL: String, outputTemplate: String) -> [String] {
+    [
+        "yt-dlp",
+        "--no-playlist",
+        "--no-progress",
+        "--restrict-filenames",
+        "--format",
+        "bv*+ba/b",
+        "--merge-output-format",
+        "mp4",
+        "--recode-video",
+        "mp4",
+        "--print",
+        "after_move:filepath",
+        "--output",
+        outputTemplate,
+        sourceURL,
+    ]
 }
 
 private struct MediaDownloadServiceKey: StorageKey {

@@ -5,6 +5,23 @@ import Testing
 
 @Suite("App Tests")
 struct RipKitServerTests {
+    @Test("yt-dlp arguments force an mp4 output")
+    func ytDLPArgumentsForceMP4Output() throws {
+        let arguments = ytDLPArguments(
+            sourceURL: "https://example.com/watch?v=1",
+            outputTemplate: "/tmp/downloads/%(id)s.%(ext)s"
+        )
+
+        #expect(arguments.contains("--merge-output-format"))
+        #expect(arguments.contains("--recode-video"))
+
+        let mergeIndex = try #require(arguments.firstIndex(of: "--merge-output-format"))
+        #expect(arguments[arguments.index(after: mergeIndex)] == "mp4")
+
+        let recodeIndex = try #require(arguments.firstIndex(of: "--recode-video"))
+        #expect(arguments[arguments.index(after: recodeIndex)] == "mp4")
+    }
+
     @Test("POST /api/download returns a download URL")
     func downloadRouteReturnsDownloadURL() async throws {
         try await withApp(configure: configure) { app in
@@ -20,8 +37,8 @@ struct RipKitServerTests {
             app.mediaDownloadDirectory = downloadDirectory.path
             app.mediaDownloadService = MediaDownloadService { _, outputDirectory in
                 let fileURL = URL(fileURLWithPath: outputDirectory, isDirectory: true)
-                    .appendingPathComponent("sample.mp3")
-                try Data("audio".utf8).write(to: fileURL)
+                    .appendingPathComponent("sample.mp4")
+                try Data("video".utf8).write(to: fileURL)
 
                 return DownloadedMedia(
                     fileName: fileURL.lastPathComponent,
@@ -34,8 +51,8 @@ struct RipKitServerTests {
             }, afterResponse: { res async throws in
                 #expect(res.status == .ok)
                 let payload = try res.content.decode(DownloadResponse.self)
-                #expect(payload.fileName == "sample.mp3")
-                #expect(payload.downloadPath == "/downloads/sample.mp3")
+                #expect(payload.fileName == "sample.mp4")
+                #expect(payload.downloadPath == "/downloads/sample.mp4")
             })
         }
     }
