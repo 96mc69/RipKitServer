@@ -185,20 +185,21 @@ func ytDLPArguments(sourceURL: String, outputTemplate: String) -> [String] {
 func ffmpegArguments(inputFilePath: String, outputFilePath: String) -> [String] {
     [
         "ffmpeg",
-        "-y",
+        "-y", /* Overwrite output files without asking */
         "-nostdin",
-        "-hide_banner",
-        "-loglevel",
+        "-hide_banner", /* suppress startup banner -- cleaner logs */
+        "-loglevel", /* -loglevel error = just log the stuff that goes really wrong */
         "error",
-        "-nostats",
+        "-nostats", /* don't print periodic stats/progress */
         "-i",
         inputFilePath,
-        "-map_metadata",
+        "-map_metadata", /* -map_metadata -1 = remove all metadata from the output */
         "-1",
-        "-map_chapters",
+        "-map_chapters", /* remove chapter markers */
         "-1",
         "-map",
-        "0:v:0",
+        "0:v:0", /* select first video stream and first audio stream (if video has audio, if not
+                  command wont fail because we've made it optional with '?') */
         "-map",
         "0:a:0?",
         "-c:v",
