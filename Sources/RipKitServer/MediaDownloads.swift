@@ -159,16 +159,22 @@ extension MediaDownloadService {
 func ytDLPArguments(sourceURL: String, outputTemplate: String) -> [String] {
     [
         "yt-dlp",
-        "--no-playlist",
-        "--no-progress",
-        "--restrict-filenames",
-        "--format",
+        "--no-playlist", /* if video is part of a playlist, just download this one video */
+        "--no-progress", /* no interactive progress bars or anything, keep logs and stdout clean */
+        "--restrict-filenames", /* restricted charset for filenames. helps avoid filesystem issues
+                                 across platforms */
+        "--format", /* selects "best video (any codec/quality) plus best audio” and then merges
+                     them. /b is the fallback which means just get the best stream available */
         "bv*+ba/b",
         "-S",
-        "vcodec:h264,acodec:aac,hdr:12,res:1080,fps:60",
+        "vcodec:h264,acodec:aac,hdr:12,res:1080,fps:60", /* Our most preferred video codec is h264,
+                                                          our most preferred audio codec is aac,
+                                                          prefer hdr content with higher bit depth,
+                                                          prefer up to 1080p resolution and 60 fps*/
         "--merge-output-format",
         "mp4",
-        "--print",
+        "--print", /* --print after_move:filepath tells yt-dlp to just print the final path
+                    after downloading */
         "after_move:filepath",
         "--output",
         outputTemplate,
