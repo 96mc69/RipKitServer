@@ -20,6 +20,19 @@ struct RipKitServerTests {
 
         let recodeIndex = try #require(arguments.firstIndex(of: "--recode-video"))
         #expect(arguments[arguments.index(after: recodeIndex)] == "mp4")
+
+        let sortIndex = try #require(arguments.firstIndex(of: "-S"))
+        #expect(arguments[arguments.index(after: sortIndex)] == "vcodec:h264,acodec:aac,hdr:12,res:1080,fps:60")
+
+        let postProcessorIndex = try #require(arguments.firstIndex(of: "--postprocessor-args"))
+        let postProcessorArgs = arguments[arguments.index(after: postProcessorIndex)]
+        #expect(postProcessorArgs.contains("libx264"))
+        #expect(postProcessorArgs.contains("-tag:v avc1"))
+        #expect(postProcessorArgs.contains("-pix_fmt yuv420p"))
+        #expect(postProcessorArgs.contains("-movflags +faststart"))
+
+        let printIndex = try #require(arguments.firstIndex(of: "--print"))
+        #expect(arguments[arguments.index(after: printIndex)] == "after_move:filepath")
     }
 
     @Test("POST /api/download returns a download URL")
