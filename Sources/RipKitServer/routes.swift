@@ -14,15 +14,38 @@ func routes(_ app: Application) throws {
             throw Abort(.badRequest, reason: "A URL is required.")
         }
 
-        let downloadedMedia = try await req.application.mediaDownloadService.download(
-            requestedURL,
-            req.application.mediaDownloadDirectory
-        )
+        let job = await req.application.mediaDownloadJobStore.createQueuedJob()
+        let jobID = job.jobID
+        let downloadService = req.application.mediaDownloadService
+        let downloadDirectory = req.application.mediaDownloadDirectory
+        let jobStore = req.application.mediaDownloadJobStore
 
-        return DownloadResponse(
-            fileName: downloadedMedia.fileName,
-            downloadPath: "/downloads/\(downloadedMedia.fileName)"
-        )
+        Task {
+            await jobStore.markProcessing(jobID: jobID)
+
+            do {
+                let downloadedMedia = try await downloadService.download(
+                    requestedURL,
+                    downloadDirectory
+                )
+                await jobStore.markCompleted(jobID: jobID, media: downloadedMedia)
+            } catch let abort as Abort {
+                await jobStore.markFailed(jobID: jobID, error: abort.reason)
+            } catch {
+                await jobStore.markFailed(jobID: jobID, error: error.localizedDescription)
+            }
+        }
+
+        return job
+    }
+
+    app.get("api", "download", ":jobID") { req async throws -> DownloadResponse in
+        guard let jobID = req.parameters.get("jobID"),
+              let job = await req.application.mediaDownloadJobStore.job(jobID: jobID) else {
+            throw Abort(.notFound)
+        }
+
+        return job
     }
 
     app.get("downloads", ":filename") { req async throws -> Response in
@@ -43,6 +66,12 @@ func routes(_ app: Application) throws {
             name: .contentDisposition,
             value: "attachment; filename=\"\(fileName)\""
         )
+        if fileName.lowercased().hasSuffix(".mp4") {
+            response.headers.replaceOrAdd(
+                name: .contentType,
+                value: "video/mp4"
+            )
+        }
         return response
     }
 }

@@ -12,5 +12,6 @@ public func configure(_ app: Application) async throws {
 
     app.mediaDownloadDirectory = downloadDirectory
     app.mediaDownloadService = .live
+    app.mediaDownloadJobStore = MediaDownloadJobStore()
     try routes(app)
 }
