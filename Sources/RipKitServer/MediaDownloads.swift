@@ -115,7 +115,7 @@ func ytDLPArguments(sourceURL: String, outputTemplate: String) -> [String] {
         "--recode-video",
         "mp4",
         "--print",
-        "after_move:filepath",
+//        "after_move:filepath",
         "--output",
         outputTemplate,
         sourceURL,
