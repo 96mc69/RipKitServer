@@ -26,6 +26,30 @@ struct DownloadedMedia: Sendable {
     let filePath: String
 }
 
+struct YTDLPCookieConfiguration: Sendable, Equatable {
+    let cookiesFilePath: String?
+    let cookiesFromBrowser: String?
+
+    init(cookiesFilePath: String? = nil, cookiesFromBrowser: String? = nil) {
+        self.cookiesFilePath = cookiesFilePath?.trimmedToNil
+        self.cookiesFromBrowser = cookiesFromBrowser?.trimmedToNil
+    }
+
+    static let disabled = YTDLPCookieConfiguration()
+
+    var ytDLPArguments: [String] {
+        if let cookiesFilePath {
+            return ["--cookies", cookiesFilePath]
+        }
+
+        if let cookiesFromBrowser {
+            return ["--cookies-from-browser", cookiesFromBrowser]
+        }
+
+        return []
+    }
+}
+
 struct MediaDownloadService: Sendable {
     let download: @Sendable (_ sourceURL: String, _ outputDirectory: String) async throws -> DownloadedMedia
 }
@@ -94,75 +118,85 @@ private struct CommandResult: Sendable {
 }
 
 extension MediaDownloadService {
-    static let live = MediaDownloadService { sourceURL, outputDirectory in
-        guard let remoteURL = URL(string: sourceURL),
-              let scheme = remoteURL.scheme?.lowercased(),
-              ["http", "https"].contains(scheme) else {
-            throw Abort(.badRequest, reason: "A valid http(s) URL is required.")
-        }
+    static func live(
+        cookieConfiguration: YTDLPCookieConfiguration = .disabled
+    ) -> MediaDownloadService {
+        MediaDownloadService { sourceURL, outputDirectory in
+            guard let remoteURL = URL(string: sourceURL),
+                  let scheme = remoteURL.scheme?.lowercased(),
+                  ["http", "https"].contains(scheme) else {
+                throw Abort(.badRequest, reason: "A valid http(s) URL is required.")
+            }
 
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(
-            atPath: outputDirectory,
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
-
-        let outputTemplate = URL(fileURLWithPath: outputDirectory, isDirectory: true)
-            .appendingPathComponent("\(UUID().uuidString).%(ext)s")
-            .path
-
-        let ytDLPResult = try await runCommand(
-            arguments: ytDLPArguments(
-                sourceURL: sourceURL,
-                outputTemplate: outputTemplate
-            ),
-            commandName: "yt-dlp"
-        )
-
-        guard let downloadedPath = ytDLPResult.stdout
-            .split(whereSeparator: \.isNewline)
-            .map(String.init)
-            .last,
-            !downloadedPath.isEmpty else {
-            throw Abort(
-                .internalServerError,
-                reason: "yt-dlp did not report a downloaded file path."
+            let fileManager = FileManager.default
+            try fileManager.createDirectory(
+                atPath: outputDirectory,
+                withIntermediateDirectories: true,
+                attributes: nil
             )
-        }
 
-        let downloadedFileURL = URL(fileURLWithPath: downloadedPath)
-        let normalizedFileURL = transcodedFileURL(for: downloadedFileURL)
+            let outputTemplate = URL(fileURLWithPath: outputDirectory, isDirectory: true)
+                .appendingPathComponent("\(UUID().uuidString).%(ext)s")
+                .path
 
-        do {
-            _ = try await runCommand(
-                arguments: ffmpegArguments(
-                    inputFilePath: downloadedFileURL.path,
-                    outputFilePath: normalizedFileURL.path
+            let ytDLPResult = try await runCommand(
+                arguments: ytDLPArguments(
+                    sourceURL: sourceURL,
+                    outputTemplate: outputTemplate,
+                    cookieConfiguration: cookieConfiguration
                 ),
-                commandName: "ffmpeg"
+                commandName: "yt-dlp"
             )
-        } catch {
-            try? fileManager.removeItem(at: normalizedFileURL)
-            throw error
+
+            guard let downloadedPath = ytDLPResult.stdout
+                .split(whereSeparator: \.isNewline)
+                .map(String.init)
+                .last,
+                !downloadedPath.isEmpty else {
+                throw Abort(
+                    .internalServerError,
+                    reason: "yt-dlp did not report a downloaded file path."
+                )
+            }
+
+            let downloadedFileURL = URL(fileURLWithPath: downloadedPath)
+            let normalizedFileURL = transcodedFileURL(for: downloadedFileURL)
+
+            do {
+                _ = try await runCommand(
+                    arguments: ffmpegArguments(
+                        inputFilePath: downloadedFileURL.path,
+                        outputFilePath: normalizedFileURL.path
+                    ),
+                    commandName: "ffmpeg"
+                )
+            } catch {
+                try? fileManager.removeItem(at: normalizedFileURL)
+                throw error
+            }
+
+            try? fileManager.removeItem(at: downloadedFileURL)
+
+            return DownloadedMedia(
+                fileName: normalizedFileURL.lastPathComponent,
+                filePath: normalizedFileURL.path
+            )
         }
-
-        try? fileManager.removeItem(at: downloadedFileURL)
-
-        return DownloadedMedia(
-            fileName: normalizedFileURL.lastPathComponent,
-            filePath: normalizedFileURL.path
-        )
     }
 }
 
-func ytDLPArguments(sourceURL: String, outputTemplate: String) -> [String] {
+func ytDLPArguments(
+    sourceURL: String,
+    outputTemplate: String,
+    cookieConfiguration: YTDLPCookieConfiguration = .disabled
+) -> [String] {
     [
         "yt-dlp",
         "--no-playlist", /* if video is part of a playlist, just download this one video */
         "--no-progress", /* no interactive progress bars or anything, keep logs and stdout clean */
         "--restrict-filenames", /* restricted charset for filenames. helps avoid filesystem issues
                                  across platforms */
+    ] + cookieConfiguration.ytDLPArguments + [
         "--format", /* selects "best video (any codec/quality) plus best audio” and then merges
                      them. /b is the fallback which means just get the best stream available */
         "bv*+ba/b",
@@ -180,6 +214,13 @@ func ytDLPArguments(sourceURL: String, outputTemplate: String) -> [String] {
         outputTemplate,
         sourceURL,
     ]
+}
+
+private extension String {
+    var trimmedToNil: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
 func ffmpegArguments(inputFilePath: String, outputFilePath: String) -> [String] {
@@ -201,16 +242,16 @@ func ffmpegArguments(inputFilePath: String, outputFilePath: String) -> [String] 
         "0:v:0", /* select first video stream and first audio stream (if video has audio, if not
                   command wont fail because we've made it optional with '?') */
         "-map",
-        "0:a:0?",
-        "-c:v",
+        "0:a:0?", /* select first audio stream from the first input if it exists */
+        "-c:v", /* c:v libx264 = encode video using H.264 via libx264 */
         "libx264",
-        "-preset",
+        "-preset", /* preset medium = x264 speed/efficiency tradeoff, medium is a good default */
         "medium",
-        "-crf",
+        "-crf", /* Constant Rate Factor = quality setting. 22 is good for most cases. lower = higher quality/larger size */
         "22",
-        "-vf",
+        "-vf", /* vf scale=trunc(iw/2)... ensures width/height are even numbers some codecs require even dimensions for the container */
         "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
-        "-pix_fmt",
+        "-pix_fmt", /* pix_fmt yuv.. forces 4:2:0 chroma subsampling for braod compatibility (iOS, web players and old devices) */
         "yuv420p",
         "-profile:v",
         "high",
@@ -241,6 +282,8 @@ func transcodedFileURL(for inputFileURL: URL) -> URL {
         .appendingPathExtension("mp4")
 }
 
+// - TODO: We may want explicit, complete paths instead of relying on /usr/bin/env
+// LaunchDaemon service that starts and runs our vapor server doesn't have the same environment as the user so yt-dlp and ffmpeg paths must be explicitly made available in the launch wrapper script or in the LaunchDaemon plist
 private func runCommand(arguments: [String], commandName: String) async throws -> CommandResult {
     try await withCheckedThrowingContinuation { continuation in
         let process = Process()
@@ -301,7 +344,7 @@ private struct MediaDownloadJobStoreKey: StorageKey {
 
 extension Application {
     var mediaDownloadService: MediaDownloadService {
-        get { self.storage[MediaDownloadServiceKey.self] ?? .live }
+        get { self.storage[MediaDownloadServiceKey.self] ?? .live() }
         set { self.storage[MediaDownloadServiceKey.self] = newValue }
     }
 

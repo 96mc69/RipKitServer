@@ -24,6 +24,49 @@ struct RipKitServerTests {
         #expect(arguments[arguments.index(after: printIndex)] == "after_move:filepath")
     }
 
+    @Test("yt-dlp arguments include cookies file when configured")
+    func ytDLPArgumentsIncludeCookiesFile() throws {
+        let arguments = ytDLPArguments(
+            sourceURL: "https://www.instagram.com/reel/example/",
+            outputTemplate: "/tmp/downloads/%(id)s.%(ext)s",
+            cookieConfiguration: YTDLPCookieConfiguration(
+                cookiesFilePath: "/tmp/instagram-cookies.txt"
+            )
+        )
+
+        let cookiesIndex = try #require(arguments.firstIndex(of: "--cookies"))
+        #expect(arguments[arguments.index(after: cookiesIndex)] == "/tmp/instagram-cookies.txt")
+    }
+
+    @Test("yt-dlp arguments fall back to browser cookies when no file is set")
+    func ytDLPArgumentsIncludeBrowserCookies() throws {
+        let arguments = ytDLPArguments(
+            sourceURL: "https://www.instagram.com/reel/example/",
+            outputTemplate: "/tmp/downloads/%(id)s.%(ext)s",
+            cookieConfiguration: YTDLPCookieConfiguration(
+                cookiesFromBrowser: "safari"
+            )
+        )
+
+        let cookiesIndex = try #require(arguments.firstIndex(of: "--cookies-from-browser"))
+        #expect(arguments[arguments.index(after: cookiesIndex)] == "safari")
+    }
+
+    @Test("yt-dlp prefers explicit cookies file over browser cookies")
+    func ytDLPArgumentsPreferCookiesFile() throws {
+        let arguments = ytDLPArguments(
+            sourceURL: "https://www.instagram.com/reel/example/",
+            outputTemplate: "/tmp/downloads/%(id)s.%(ext)s",
+            cookieConfiguration: YTDLPCookieConfiguration(
+                cookiesFilePath: "/tmp/instagram-cookies.txt",
+                cookiesFromBrowser: "safari"
+            )
+        )
+
+        #expect(arguments.contains("--cookies"))
+        #expect(!arguments.contains("--cookies-from-browser"))
+    }
+
     @Test("ffmpeg arguments normalize video for Apple playback")
     func ffmpegArgumentsNormalizeForApplePlayback() throws {
         let arguments = ffmpegArguments(
