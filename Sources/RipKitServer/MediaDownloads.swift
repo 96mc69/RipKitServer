@@ -145,7 +145,7 @@ extension MediaDownloadService {
                     outputTemplate: outputTemplate,
                     cookieConfiguration: cookieConfiguration
                 ),
-                commandName: "yt-dlp"
+                commandName: ToolPaths.ytDlp
             )
 
             guard let downloadedPath = ytDLPResult.stdout
@@ -168,7 +168,7 @@ extension MediaDownloadService {
                         inputFilePath: downloadedFileURL.path,
                         outputFilePath: normalizedFileURL.path
                     ),
-                    commandName: "ffmpeg"
+                    commandName: ToolPaths.ffmpeg
                 )
             } catch {
                 try? fileManager.removeItem(at: normalizedFileURL)
