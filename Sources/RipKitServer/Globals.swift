@@ -2,7 +2,6 @@
 //
 // Author: 96mc69
 
-
 import Foundation
 
 enum ToolPaths {
